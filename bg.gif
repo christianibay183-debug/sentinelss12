@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sentinels Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Special+Elite&display=swap" rel="stylesheet">
+    <link href="https://db.onlinewebfonts.com/c/de54e55696de4441e90e41503b87bbf0?family=Migration+Sans+ITC+W01+Bold" rel="stylesheet">
+    <link rel="stylesheet" href="../css/dashboard.css">
+</head>
+<body>
+
+<!-- OVERLAYS -->
+<div class="scanlines"></div>
+<div class="vignette"></div>
+
+<!-- ══════════════════════════════════════════
+     SETTINGS MODAL  (admin only — JS hides it for non-admins)
+══════════════════════════════════════════ -->
+<div id="settingsOverlay" class="settings-overlay" style="display:none">
+    <div class="settings-modal">
+
+        <div class="settings-header">
+            <span class="settings-icon">⚙</span>
+            <h3>CAMERA SETTINGS</h3>
+            <button id="closeSettings" class="settings-close">✕</button>
+        </div>
+
+        <div class="settings-body">
+
+            <label class="settings-label">CLOUDFLARE TUNNEL STREAM URL</label>
+            <p class="settings-hint">
+                Paste the full MJPEG stream URL including <code>/stream</code> at the end.<br>
+                Example: <code>https://your-tunnel.trycloudflare.com/stream</code>
+            </p>
+
+            <input
+                id="streamUrlInput"
+                type="url"
+                class="settings-input"
+                placeholder="https://your-tunnel.trycloudflare.com/stream"
+                spellcheck="false"
+                autocomplete="off">
+
+            <div class="settings-actions">
+                <button id="testStreamBtn"  class="btn-test">TEST</button>
+                <button id="saveStreamBtn"  class="btn-save">SAVE &amp; APPLY</button>
+            </div>
+
+            <div id="testResult" class="test-result" style="display:none"></div>
+
+            <div class="settings-divider"></div>
+
+            <div class="settings-info">
+                <div class="info-row">
+                    <span class="info-label">ACTIVE URL</span>
+                    <span id="currentUrlDisplay" class="info-value">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">SOURCE</span>
+                    <span id="urlSource" class="info-value">—</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">NOTE</span>
+                    <span class="info-value info-note">Runtime changes last until next redeploy. For permanent changes set <code>TUNNEL_URL</code> in Railway Variables.</span>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+    <div class="logo-area">
+        <img src="../icons/logo.png" class="sidebar-logo" alt="Sentinels Logo">
+        <h1 class="sidebar-title">SENTINELS</h1>
+        <p class="sidebar-subtitle">SURVEILLANCE SYSTEM</p>
+    </div>
+
+    <nav class="nav">
+        <a href="#" class="nav-item active"><span>▣</span> DASHBOARD</a>
+        {% if user == 'admin' %}
+        <a href="/logs" class="nav-item"><span>☰</span> LOGS</a>
+        <a href="#" class="nav-item" id="settingsNavBtn"><span>⚙</span> SETTINGS</a>
+        <a href="/restricteds" class="nav-item" id="settingsNavBtn"><span>⚙</span> RESTRICTEDS</a>
+        {% endif %}
+    </nav>
+
+    <div class="sidebar-footer">
+        <div class="user">● {{user | upper}}</div>
+        <button class="logout-btn">SIGN OUT</button>
+    </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main">
+
+    <header class="topbar">
+        <h2>LIVE DASHBOARD</h2>
+        <div class="topbar-right">
+            <div id="clock"></div>
+            <div id="date"></div>
+        </div>
+    </header>
+
+    <div class="dashboard-content">
+
+        <!-- STAT CARDS -->
+        <section class="stats-row">
+            <div class="stat-card">
+                <div class="stat-number">1</div>
+                <div class="stat-label">CAMERA</div>
+            </div>
+            <div class="stat-card">
+                <div id="statusText" class="stat-status status-connecting">CONNECTING</div>
+                <div class="stat-label">STATUS</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-alert">0</div>
+                <div class="stat-label">ALERTS</div>
+            </div>
+        </section>
+
+        <!-- GRID -->
+        <section class="main-grid">
+
+            <!-- CAMERA CARD -->
+            <div class="camera-card">
+                <div class="camera-header">
+                    <div class="camera-title">CAM 00 — MAIN CAMERA</div>
+                    <div class="camera-header-right">
+                        <div class="camera-live status-connecting" id="liveIndicator">
+                            <div class="camera-live-dot"></div>
+                            <span id="liveLabel">CONNECTING</span>
+                        </div>
+                        <!-- Only rendered/visible for admins via JS -->
+                        <button id="settingsCamBtn" class="cam-settings-btn" style="display:none">⚙ CONFIG</button>
+                        <button id="fullscreenBtn">FULLSCREEN</button>
+                    </div>
+                </div>
+
+                <!-- FEED AREA -->
+                <div class="camera-feed" id="cameraFeed">
+                    <button id="exitFullscreenBtn">✕</button>
+
+                    <!-- LOADING -->
+                    <div id="streamOverlay" class="stream-overlay">
+                        <div class="stream-loader">
+                            <div class="loader-ring"></div>
+                            <div id="overlayStatus" class="loader-status">CONNECTING TO FEED…</div>
+                            <div id="overlayHint"   class="loader-hint">Checking stream configuration</div>
+                        </div>
+                    </div>
+
+                    <!-- ERROR -->
+                    <div id="streamError" class="stream-overlay stream-error-bg" style="display:none">
+                        <div class="error-icon">⚠</div>
+                        <div id="errorMsg"  class="error-msg">STREAM UNAVAILABLE</div>
+                        <div id="errorSub"  class="error-sub">—</div>
+                        <button class="retry-btn" id="retryBtn">↺ RETRY</button>
+                    </div>
+
+                    <!-- NOT CONFIGURED -->
+                    <div id="noUrlOverlay" class="stream-overlay stream-nourl-bg" style="display:none">
+                        <div class="error-icon">📡</div>
+                        <div class="error-msg">NO STREAM CONFIGURED</div>
+                        <div class="error-sub" id="noUrlSub">Set <code>TUNNEL_URL</code> in Railway Variables.</div>
+                        <button class="retry-btn" id="openSettingsFromFeed" style="display:none">⚙ OPEN SETTINGS</button>
+                    </div>
+
+                    <!-- THE STREAM -->
+                    <img id="cameraStream" src="" alt="Camera Feed" decoding="async" fetchpriority="high">
+                </div>
+
+                
+            </div>
+
+            <!-- RECENT LOGS -->
+            <div class="logs-card">
+                <div class="logs-title">RECENT LOGS</div>
+                <div class="logs-list">
+                    <div class="log-item">
+                        <div class="log-title">Motion Detected</div>
+                        <div class="log-subtitle">CAM 00 • 11:41 PM</div>
+                    </div>
+                    <div class="log-item">
+                        <div class="log-title">Camera Online</div>
+                        <div class="log-subtitle">SYSTEM • ACTIVE</div>
+                    </div>
+                    <div class="log-item">
+                        <div class="log-title">User Login</div>
+                        <div class="log-subtitle">ADMIN • SUCCESS</div>
+                    </div>
+                    <div class="log-item">
+                        <div class="log-title">Stream Accessed</div>
+                        <div class="log-subtitle">LOCALHOST • ACTIVE</div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+    </div>
+</main>
+
+<script src="../js/dashboard.js"></script>
+</body>
+</html>
